@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buck 降壓轉換器即時互動模擬器</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Custom scrollbar for modern instrument aesthetic */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    .scope-grid {
+      background-size: 40px 40px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-black">
+  <!-- Top Navigation & Global Status -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-30 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-base sm:text-lg font-bold tracking-tight text-white flex items-center gap-2">
+          Buck 降壓轉換器模擬實驗室
+          <span class="text-xs px-2 py-0.5 rounded-full font-mono font-medium bg-cyan-950 text-cyan-400 border border-cyan-800/60">DC-DC Lab</span>
+        </h1>
+        <p class="text-xs text-slate-400 hidden sm:block">即時數值解算、電路電流微觀流向與四通道虛擬示波器</p>
+      </div>
+    </div>
+
+    <!-- Live Telemetry Badges -->
+    <div class="flex items-center flex-wrap gap-2 text-xs mono">
+      <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700">
+        <span class="text-slate-400">模式:</span>
+        <span id="badgeMode" class="font-bold text-emerald-400 flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          CCM (連續)
+        </span>
+      </div>
+      <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700">
+        <span class="text-slate-400">效率 η:</span>
+        <span id="badgeEfficiency" class="font-bold text-amber-300">92.4%</span>
+      </div>
+      <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700">
+        <span class="text-slate-400">P_out:</span>
+        <span id="badgePout" class="font-bold text-cyan-300">10.0 W</span>
+      </div>
+      <!-- Preset Select -->
+      <select id="presetSelect" class="bg-slate-800 text-slate-200 border border-slate-700 rounded-md px-2 py-1 text-xs focus:ring-1 focus:ring-cyan-500 outline-none">
+        <option value="std12to5">標準配置 (12V 轉 5V / 2A CCM)</option>
+        <option value="lightDCM">輕載模式 (進入 DCM 不連續導通)</option>
+        <option value="highFreq">高頻微型化 (300kHz 低漣波)</option>
+        <option value="heavy24to12">大功率工業電源 (24V 轉 12V / 5A)</option>
+      </select>
+
+      <button id="btnPause" class="px-3 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-medium flex items-center gap-1 transition">
+        <svg id="pauseIcon" class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+        <span id="pauseText">暫停</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-[1720px] w-full mx-auto p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+    <!-- Left Column: Visual Circuit Schematic & Real-time Metrics (7 cols on lg) -->
+    <section class="lg:col-span-7 flex flex-col gap-4">
+      <!-- Circuit Schematic Box -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col">
+        <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+            <h2 class="text-xs sm:text-sm font-semibold tracking-wide text-slate-200 uppercase">電路拓撲與即時電流流向</h2>
+          </div>
+          <div class="flex items-center gap-3 text-xs mono text-slate-400">
+            <span class="flex items-center gap-1">
+              <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span> 導通路徑
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="inline-block w-2 h-2 rounded-full bg-amber-400"></span> 儲能電感
+            </span>
+          </div>
+        </div>
+
+        <div class="relative w-full aspect-[16/9] sm:aspect-[16/8.5] bg-slate-950 flex items-center justify-center overflow-hidden">
+          <canvas id="circuitCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+          <div id="circuitTooltip" class="absolute pointer-events-none hidden bg-slate-900/90 text-slate-200 border border-slate-700 text-xs px-2.5 py-1.5 rounded shadow-xl backdrop-blur mono z-10"></div>
+        </div>
+      </div>
+
+      <!-- Analytical Cards Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mono">
+        <!-- Vout Actual vs Theory -->
+        <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl flex flex-col justify-between">
+          <div class="text-slate-400 text-xs flex justify-between">
+            <span>輸出電壓 V_out</span>
+            <span class="text-cyan-400 text-[10px]">理想: <span id="theoryVout">5.00</span>V</span>
+          </div>
+          <div class="mt-1 flex items-baseline gap-1">
+            <span id="metricVout" class="text-xl sm:text-2xl font-bold text-white tracking-tight">5.01</span>
+            <span class="text-xs text-slate-400">V</span>
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1 flex justify-between">
+            <span>漣波 ΔV:</span>
+            <span id="metricVripple" class="text-slate-300">12.4 mV</span>
+          </div>
+        </div>
+
+        <!-- Inductor Current & Ripple -->
+        <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl flex flex-col justify-between">
+          <div class="text-slate-400 text-xs flex justify-between">
+            <span>電感平均電流 I_L</span>
+            <span class="text-amber-400 text-[10px]">峰值: <span id="metricIlpk">2.42</span>A</span>
+          </div>
+          <div class="mt-1 flex items-baseline gap-1">
+            <span id="metricIout" class="text-xl sm:text-2xl font-bold text-amber-300 tracking-tight">2.00</span>
+            <span class="text-xs text-slate-400">A</span>
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1 flex justify-between">
+            <span>電感紋波 ΔI:</span>
+            <span id="metricIripple" class="text-slate-300">0.82 A</span>
+          </div>
+        </div>
+
+        <!-- Duty Cycle & Critical Inductance -->
+        <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl flex flex-col justify-between">
+          <div class="text-slate-400 text-xs">占空比 / 臨界電感</div>
+          <div class="mt-1 flex items-baseline gap-1">
+            <span id="metricDuty" class="text-xl sm:text-2xl font-bold text-emerald-400 tracking-tight">41.7</span>
+            <span class="text-xs text-slate-400">%</span>
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1 flex justify-between">
+            <span>臨界 L_crit:</span>
+            <span id="metricLcrit" class="text-slate-300">14.6 µH</span>
+          </div>
+        </div>
+
+        <!-- Total Power & Loss -->
+        <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl flex flex-col justify-between">
+          <div class="text-slate-400 text-xs">功耗與內部損耗</div>
+          <div class="mt-1 flex items-baseline gap-1">
+            <span id="metricPin" class="text-xl sm:text-2xl font-bold text-purple-300 tracking-tight">10.8</span>
+            <span class="text-xs text-slate-400">W</span>
+          </div>
+          <div class="text-[11px] text-slate-500 mt-1 flex justify-between">
+            <span>熱損耗 Ploss:</span>
+            <span id="metricPloss" class="text-rose-400">0.82 W</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Theory and Knowledge Section -->
+      <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 text-xs text-slate-300 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="font-semibold text-slate-100 flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Buck 降壓電路核心運作原理
+          </span>
+          <button id="btnToggleTheory" class="text-cyan-400 hover:text-cyan-300 text-xs">展開公式詳解</button>
+        </div>
+        <div id="theoryContent" class="hidden pt-2 border-t border-slate-800/80 space-y-2 leading-relaxed">
+          <p>
+            Buck 降壓電路利用<strong>高頻開關 (MOSFET)</strong> 與<strong>電感 (L)</strong> 的伏秒平衡 (Volt-Second Balance) 將高壓 DC 轉換為平滑的低壓 DC：
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mono text-[11px] my-2">
+            <div class="bg-slate-950 p-2 rounded border border-slate-800">
+              <span class="text-cyan-400 font-bold block mb-1">1. 導通期間 (Switch ON)</span>
+              V_L = V_in - V_out<br>
+              電感儲能，電流以斜率 (V_in - V_out)/L 線性爬升。
+            </div>
+            <div class="bg-slate-950 p-2 rounded border border-slate-800">
+              <span class="text-amber-400 font-bold block mb-1">2. 截止期間 (Switch OFF)</span>
+              V_L = -V_out (忽略二極體降壓)<br>
+              二極體續流，電感放能，電流以斜率 -V_out/L 遞減。
+            </div>
+            <div class="bg-slate-950 p-2 rounded border border-slate-800">
+              <span class="text-emerald-400 font-bold block mb-1">3. 連續/不連續條件</span>
+              當負載電流低於紋波的一半時，電感電流歸零進入 DCM，V_out 將受負載影響而上升。
+            </div>
+          </div>
+          <div class="text-[11px] text-slate-400">
+            公式簡記：CCM 穩態輸出電壓 <code class="text-cyan-300">V_out = D · V_in</code> ；紋波電流 <code class="text-amber-300">ΔI_L = (V_in - V_out) · D / (f_sw · L)</code> ；輸出漣波 <code class="text-rose-300">ΔV_out ≈ ΔI_L / (8 · f_sw · C) + ΔI_L · ESR</code>。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Oscilloscope & Controls (5 cols on lg) -->
+    <section class="lg:col-span-5 flex flex-col gap-4">
+      <!-- Digital Oscilloscope Screen -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col">
+        <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="w-2.5 h-2.5 rounded bg-emerald-500 animate-pulse"></div>
+            <h2 class="text-xs sm:text-sm font-semibold tracking-wide text-slate-200">虛擬示波器 (VSO-4CH)</h2>
+          </div>
+          <!-- Timebase selector -->
+          <div class="flex items-center gap-2 text-xs mono">
+            <span class="text-slate-400">時基:</span>
+            <select id="timebaseSelect" class="bg-slate-800 text-slate-200 border border-slate-700 rounded px-1.5 py-0.5 text-xs outline-none">
+              <option value="1">1x (顯示 2 個開關週期)</option>
+              <option value="2" selected>2x (顯示 4 個開關週期)</option>
+              <option value="5">5x (顯示 10 個開關週期)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Scope Canvas -->
+        <div class="relative w-full aspect-[16/10] bg-slate-950 scope-grid flex items-center justify-center overflow-hidden">
+          <canvas id="scopeCanvas" class="w-full h-full block"></canvas>
+          <div id="scopeTriggerTag" class="absolute left-2 top-2 px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-950/80 text-emerald-400 border border-emerald-800">
+            TRIG: AUTO (V_gate ↑)
+          </div>
+        </div>
+
+        <!-- Scope Channel Toggles & Legend -->
+        <div class="p-2.5 bg-slate-900 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs mono">
+          <label class="flex items-center gap-1.5 cursor-pointer bg-slate-950/60 p-1.5 rounded border border-slate-800 hover:border-slate-700">
+            <input type="checkbox" id="chGate" checked class="accent-emerald-400 rounded">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+            <span class="text-emerald-300 font-bold">V_gate</span>
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer bg-slate-950/60 p-1.5 rounded border border-slate-800 hover:border-slate-700">
+            <input type="checkbox" id="chVsw" checked class="accent-yellow-400 rounded">
+            <span class="w-2.5 h-2.5 rounded-full bg-yellow-400"></span>
+            <span class="text-yellow-300 font-bold">V_sw</span>
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer bg-slate-950/60 p-1.5 rounded border border-slate-800 hover:border-slate-700">
+            <input type="checkbox" id="chIL" checked class="accent-cyan-400 rounded">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+            <span class="text-cyan-300 font-bold">I_L (電感)</span>
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer bg-slate-950/60 p-1.5 rounded border border-slate-800 hover:border-slate-700">
+            <input type="checkbox" id="chVout" checked class="accent-pink-400 rounded">
+            <span class="w-2.5 h-2.5 rounded-full bg-pink-400"></span>
+            <span class="text-pink-300 font-bold">V_out</span>
+          </label>
+        </div>
+
+        <div class="px-3 py-1.5 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between text-[11px] mono text-slate-400">
+          <label class="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" id="chkAcCoupling" class="accent-cyan-500 rounded">
+            <span>V_out AC 交流耦合 (放大檢視輸出漣波)</span>
+          </label>
+          <span id="scopeCursorInfo">游標檢測: 移動滑鼠至示波器</span>
+        </div>
+      </div>
+
+      <!-- Interactive Parameter Controls -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+          <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+            </svg>
+            即時參數調校旋鈕
+          </h3>
+          <!-- Closed Loop vs Open Loop switch -->
+          <div class="flex items-center gap-2 text-xs">
+            <span id="lblModeType" class="text-slate-400">控制方式:</span>
+            <button id="btnToggleControlMode" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 font-mono font-medium border border-slate-700 transition">
+              閉環 PID 穩壓
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-3.5 text-xs">
+          <!-- Vin Slider -->
+          <div>
+            <div class="flex justify-between mono mb-1">
+              <span class="text-slate-400">輸入直流電壓 (V_in):</span>
+              <span id="valVin" class="text-cyan-400 font-bold">12.0 V</span>
+            </div>
+            <input id="sliderVin" type="range" min="5" max="36" step="0.5" value="12" class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+            <div class="flex justify-between text-[10px] text-slate-500 mono mt-0.5">
+              <span>5V</span>
+              <span>12V</span>
+              <span>24V</span>
+              <span>36V</span>
+            </div>
+          </div>
+
+          <!-- Dynamic: Duty Cycle or Target Vout Slider -->
+          <div id="controlGroupTarget">
+            <div class="flex justify-between mono mb-1">
+              <span id="labelTargetControl" class="text-slate-400">目標輸出電壓 (V_target):</span>
+              <span id="valTargetControl" class="text-emerald-400 font-bold">5.0 V</span>
+            </div>
+            <input id="sliderTarget" type="range" min="1" max="30" step="0.1" value="5" class="w-full accent-emerald-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+          </div>
+
+          <!-- Switching Frequency Slider -->
+          <div>
+            <div class="flex justify-between mono mb-1">
+              <span class="text-slate-400">開關切換頻率 (f_sw):</span>
+              <span id="valFsw" class="text-purple-400 font-bold">100 kHz</span>
+            </div>
+            <input id="sliderFsw" type="range" min="20" max="400" step="10" value="100" class="w-full accent-purple-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+          </div>
+
+          <!-- Inductance Slider -->
+          <div>
+            <div class="flex justify-between mono mb-1">
+              <span class="text-slate-400">儲能電感量 (L):</span>
+              <span id="valL" class="text-amber-400 font-bold">47 µH</span>
+            </div>
+            <input id="sliderL" type="range" min="4.7" max="220" step="1" value="47" class="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+          </div>
+
+          <!-- Capacitance Slider -->
+          <div>
+            <div class="flex justify-between mono mb-1">
+              <span class="text-slate-400">濾波電容量 (C):</span>
+              <span id="valC" class="text-rose-400 font-bold">100 µF</span>
+            </div>
+            <input id="sliderC" type="range" min="10" max="680" step="10" value="100" class="w-full accent-rose-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+          </div>
+
+          <!-- Load Resistance Slider & Step Load Button -->
+          <div>
+            <div class="flex justify-between mono mb-1">
+              <span class="text-slate-400">負載電阻 (R_load):</span>
+              <span id="valRload" class="text-blue-400 font-bold">2.5 Ω (2.00 A)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="sliderRload" type="range" min="0.5" max="50" step="0.5" value="2.5" class="w-full accent-blue-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+              <button id="btnStepLoad" class="shrink-0 px-2.5 py-1 text-[11px] rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 font-medium border border-slate-700 active:bg-cyan-900 transition">
+                ⚡ 瞬態突載
+              </button>
+            </div>
+          </div>
+          <!-- Advanced Switches: Diode vs Synchronous Rectifier -->
+          <div class="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="chkSyncRectifier" class="accent-cyan-500 rounded">
+              <span class="text-slate-300">同步整流 (MOSFET 代替二極體)</span>
+            </label>
+            <div class="flex items-center gap-1 text-[11px] text-slate-400">
+              <span>動畫速度:</span>
+              <select id="simSpeedSelect" class="bg-slate-800 text-slate-200 rounded px-1.5 py-0.5 border border-slate-700">
+                <option value="0.3">0.3x 慢速</option>
+                <option value="1" selected>1.0x 正常</option>
+                <option value="2.5">2.5x 快速</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Notification Banner / Toast for Step Load -->
+  <div id="toast" class="fixed bottom-4 right-4 bg-slate-800/95 border border-cyan-500/50 text-cyan-300 px-3.5 py-2 rounded-lg text-xs mono shadow-2xl opacity-0 pointer-events-none transition-all duration-300 transform translate-y-2 z-50 flex items-center gap-2">
+    <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+    <span id="toastMsg">負載突加測試完成</span>
+  </div>
+
+  <script>
+    // Simulation Circuit State & Parameters
+    const state = {
+      // Inputs & Components
+      Vin: 12.0,            // Volts
+      Vtarget: 5.0,         // Target Volts (Closed Loop)
+      duty: 0.4167,         // Duty cycle [0.02, 0.95]
+      fsw: 100000,          // Switching frequency (Hz)
+      L: 47e-6,             // Inductance (Henries)
+      C: 100e-6,            // Capacitance (Farads)
+      Rload: 2.5,           // Load resistance (Ohms)
+      
+      // Parasitic Real-World Parameters
+      Ron_hs: 0.035,        // High-side MOSFET Rdson (Ohms)
+      Ron_ls: 0.025,        // Low-side MOSFET Rdson for Sync (Ohms)
+      Vd: 0.45,             // Diode forward drop (Schottky)
+      DCR: 0.025,           // Inductor winding resistance (Ohms)
+      ESR: 0.030,           // Capacitor ESR (Ohms)
+      isSync: false,        // Synchronous Rectifier toggle
+      isClosedLoop: true,   // PID control active
+
+      // Instantaneous Physics Variables
+      iL: 0.0,              // Inductor Current (A)
+      vC: 5.0,              // Capacitor Voltage (V)
+      vOut: 5.0,            // Output Voltage including ESR (V)
+      vSw: 0.0,             // Switch Node Voltage (V)
+      gateState: false,     // High-side Gate ON/OFF
+      isDCM: false,         // Currently in DCM discontinuous conduction?
+      
+      // PID Controller State
+      pidIntegral: 0.0,
+      pidPrevError: 0.0,
+      kp: 0.015,
+      ki: 45.0,
+      kd: 0.000002,
+
+      // Runtime & Control
+      isPaused: false,
+      speedScale: 1.0,
+      simTime: 0.0,
+      timebaseMult: 2,      // Oscilloscope timebase multiplier
+
+      // Metrics calculated
+      avgIL: 2.0,
+      peakIL: 2.41,
+      minIL: 1.59,
+      rippleIL: 0.82,
+      rippleVout: 0.012,
+      efficiency: 92.4,
+      pIn: 10.8,
+      pOut: 10.0,
+      pLoss: 0.8,
+      Lcrit: 14.6e-6
+    };
+
+    // Particles for Circuit Animation
+    const particles = [];
+    const NUM_PARTICLES = 45;
+    for (let i = 0; i < NUM_PARTICLES; i++) {
+      particles.push({
+        t: Math.random(), // 0 to 1 along current path
+        speed: 0.003 + Math.random() * 0.002,
+        branch: 'hs' // 'hs' (High-Side), 'ls' (Low-Side Freewheel), 'load', 'cap'
+      });
+    }
+
+    // Oscilloscope Ring Buffer (stores waveform points)
+    const SCOPE_POINTS = 600;
+    const scopeData = {
+      t: new Float32Array(SCOPE_POINTS),
+      gate: new Float32Array(SCOPE_POINTS),
+      vsw: new Float32Array(SCOPE_POINTS),
+      il: new Float32Array(SCOPE_POINTS),
+      vout: new Float32Array(SCOPE_POINTS)
+    };
+    let scopeWriteIndex = 0;
+
+    // DOM Elements
+    const circuitCanvas = document.getElementById('circuitCanvas');
+    const ctxCircuit = circuitCanvas.getContext('2d');
+    const scopeCanvas = document.getElementById('scopeCanvas');
+    const ctxScope = scopeCanvas.getContext('2d');
+    const circuitTooltip = document.getElementById('circuitTooltip');
+
+    // Controls
+    const sliderVin = document.getElementById('sliderVin');
+    const sliderTarget = document.getElementById('sliderTarget');
+    const sliderFsw = document.getElementById('sliderFsw');
+    const sliderL = document.getElementById('sliderL');
+    const sliderC = document.getElementById('sliderC');
+    const sliderRload = document.getElementById('sliderRload');
+    const btnPause = document.getElementById('btnPause');
+    const pauseText = document.getElementById('pauseText');
+    const pauseIcon = document.getElementById('pauseIcon');
+    const btnToggleControlMode = document.getElementById('btnToggleControlMode');
+    const labelTargetControl = document.getElementById('labelTargetControl');
+    const valTargetControl = document.getElementById('valTargetControl');
+    const chkSyncRectifier = document.getElementById('chkSyncRectifier');
+    const simSpeedSelect = document.getElementById('simSpeedSelect');
+    const timebaseSelect = document.getElementById('timebaseSelect');
+    const presetSelect = document.getElementById('presetSelect');
+    const btnStepLoad = document.getElementById('btnStepLoad');
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toastMsg');
+    const btnToggleTheory = document.getElementById('btnToggleTheory');
+    const theoryContent = document.getElementById('theoryContent');
+
+    // Channel toggles
+    const chGate = document.getElementById('chGate');
+    const chVsw = document.getElementById('chVsw');
+    const chIL = document.getElementById('chIL');
+    const chVout = document.getElementById('chVout');
+    const chkAcCoupling = document.getElementById('chkAcCoupling');
+    const scopeCursorInfo = document.getElementById('scopeCursorInfo');
+
+    // Physics Numerical Simulation Step (Euler / Discrete sub-stepping)
+    function simulateStep(dt) {
+      const Tsw = 1.0 / state.fsw;
+      const tInPeriod = state.simTime % Tsw;
+
+      // Closed Loop PID calculation
+      if (state.isClosedLoop) {
+        const error = state.Vtarget - state.vOut;
+        state.pidIntegral += error * dt;
+        // Anti-windup clamping
+        state.pidIntegral = Math.max(-0.5, Math.min(0.5, state.pidIntegral));
+        const derivative = (error - state.pidPrevError) / dt;
+        state.pidPrevError = error;
+
+        // Base feed-forward estimate (Vtarget / Vin) + PID correction
+        const dFeedforward = Math.min(0.92, Math.max(0.05, state.Vtarget / Math.max(state.Vin, 0.1)));
+        const dCompensated = dFeedforward + (state.kp * error + state.ki * state.pidIntegral + state.kd * derivative);
+        state.duty = Math.max(0.02, Math.min(0.95, dCompensated));
+      }
+
+      // Switch Gate Logic
+      const isSwitchOn = tInPeriod < (state.duty * Tsw);
+      state.gateState = isSwitchOn;
+
+      let vSwIdeal = 0;
+      let dIL_dt = 0;
+      let isDCM_mode = false;
+
+      if (isSwitchOn) {
+        // High-side Switch conducts
+        const vDropSwitch = state.iL * state.Ron_hs;
+        vSwIdeal = state.Vin - vDropSwitch;
+        const vL = vSwIdeal - state.vC - (state.iL * state.DCR);
+        dIL_dt = vL / state.L;
+      } else {
+        // Switch OFF: Freewheeling
+        if (state.isSync) {
+          // Synchronous rectifier MOSFET conducts in both directions
+          vSwIdeal = -state.iL * state.Ron_ls;
+          const vL = vSwIdeal - state.vC - (state.iL * state.DCR);
+          dIL_dt = vL / state.L;
+        } else {
+          // Asynchronous Diode
+          if (state.iL > 0.0001) {
+            vSwIdeal = -state.Vd - (state.iL * 0.01);
+            const vL = vSwIdeal - state.vC - (state.iL * state.DCR);
+            dIL_dt = vL / state.L;
+          } else {
+            // Inductor current drops to zero: Diode turns OFF -> DCM!
+            isDCM_mode = true;
+            state.iL = 0;
+            dIL_dt = 0;
+            vSwIdeal = state.vC; // Switch node rings and floats to Vout
+          }
+        }
+      }
+
+      // Update Inductor Current
+      state.iL += dIL_dt * dt;
+      if (!state.isSync && state.iL < 0) {
+        state.iL = 0;
+        isDCM_mode = true;
+      }
+      state.isDCM = isDCM_mode;
+      state.vSw = vSwIdeal;
+
+      // Capacitor & Load Equations
+      // Current entering load
+      const iLoad = state.vC / state.Rload;
+      // Current entering capacitor branch
+      const iCap = state.iL - iLoad;
+      // dvC/dt = iCap / C
+      const dvC_dt = iCap / state.C;
+      state.vC += dvC_dt * dt;
+
+      // Output Voltage includes capacitor ESR drop: vOut = vC + iCap * ESR
+      state.vOut = Math.max(0, state.vC + iCap * state.ESR);
+
+      // Advance clock
+      state.simTime += dt;
+    }
+
+    // Real-time Analytical Computations for UI
+    function updateMetrics() {
+      const D = state.duty;
+      const Vin = state.Vin;
+      const f = state.fsw;
+      const L = state.L;
+      const C = state.C;
+      const R = state.Rload;
+
+      // Theoretical CCM Vout
+      const Vtheory = D * Vin;
+      document.getElementById('theoryVout').textContent = Vtheory.toFixed(2);
+
+      // Current Ripple in CCM
+      const deltaIL = ((Vin - state.vOut) * D) / (f * L);
+      state.rippleIL = Math.max(0.001, deltaIL);
+
+      // Critical Inductance: Lcrit = (1 - D) * R / (2 * f)
+      state.Lcrit = ((1 - D) * R) / (2 * f);
+      document.getElementById('metricLcrit').textContent = (state.Lcrit * 1e6).toFixed(1) + ' µH';
+
+      // Output Voltage Ripple
+      const deltaVout_c = state.rippleIL / (8 * f * C);
+      const deltaVout_esr = state.rippleIL * state.ESR;
+      state.rippleVout = (deltaVout_c + deltaVout_esr) * 1000; // in mV
+
+      // Mode Badge
+      const badgeMode = document.getElementById('badgeMode');
+      if (state.isDCM || L < state.Lcrit) {
+        badgeMode.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span> DCM (不連續導通)`;
+        badgeMode.className = 'font-bold text-amber-400 flex items-center gap-1';
+      } else {
+        badgeMode.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> CCM (連續導通)`;
+        badgeMode.className = 'font-bold text-emerald-400 flex items-center gap-1';
+      }
+
+      // Power & Efficiency
+      const Pout = (state.vOut * state.vOut) / R;
+      state.pOut = Pout;
+      // Losses: Conduction + Switching + Diode
+      const Iavg = state.vOut / R;
+      const Ploss_sw = 0.5 * Vin * Iavg * 15e-9 * f; // ~15ns switching transition
+      const Ploss_cond = (Iavg * Iavg) * (D * state.Ron_hs + (1 - D) * (state.isSync ? state.Ron_ls : (state.Vd / Math.max(Iavg, 0.1))) + state.DCR);
+      state.pLoss = Math.max(0.05, Ploss_sw + Ploss_cond);
+      state.pIn = Pout + state.pLoss;
+      state.efficiency = Math.min(99.2, Math.max(60.0, (Pout / state.pIn) * 100));
+
+      // Telemetry Cards update
+      document.getElementById('metricVout').textContent = state.vOut.toFixed(2);
+      document.getElementById('metricVripple').textContent = state.rippleVout.toFixed(1) + ' mV';
+      document.getElementById('metricIout').textContent = Iavg.toFixed(2);
+      document.getElementById('metricIlpk').textContent = (Iavg + state.rippleIL / 2).toFixed(2);
+      document.getElementById('metricIripple').textContent = state.rippleIL.toFixed(2) + ' A';
+      document.getElementById('metricDuty').textContent = (state.duty * 100).toFixed(1);
+      document.getElementById('metricPin').textContent = state.pIn.toFixed(1);
+      document.getElementById('metricPloss').textContent = state.pLoss.toFixed(2) + ' W';
+
+      // Header Badges
+      document.getElementById('badgeEfficiency').textContent = state.efficiency.toFixed(1) + '%';
+      document.getElementById('badgePout').textContent = state.pOut.toFixed(1) + ' W';
+    }
+
+    // Circuit Schematic Visualizer
+    function renderCircuit() {
+      const w = circuitCanvas.width;
+      const h = circuitCanvas.height;
+      ctxCircuit.clearRect(0, 0, w, h);
+
+      // Responsive coordinate normalization
+      const padX = w * 0.08;
+      const padY = h * 0.12;
+      const topY = padY + h * 0.18;
+      const botY = h - padY - h * 0.12;
+      const midY = (topY + botY) / 2;
+
+      // Key Nodes X positions
+      const xVin = padX;
+      const xSwitch = padX + (w - 2 * padX) * 0.22;
+      const xNodeSw = padX + (w - 2 * padX) * 0.38;
+      const xInductor = padX + (w - 2 * padX) * 0.60;
+      const xCap = padX + (w - 2 * padX) * 0.78;
+      const xLoad = w - padX;
+
+      // Draw Rails (Wires)
+      ctxCircuit.lineWidth = 3;
+      ctxCircuit.lineCap = 'round';
+      ctxCircuit.lineJoin = 'round';
+
+      // Input Top Rail (Vin to Switch)
+      ctxCircuit.strokeStyle = '#38bdf8'; // Cyan
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(xVin, topY);
+      ctxCircuit.lineTo(xSwitch - 20, topY);
+      ctxCircuit.stroke();
+
+      // Switch Node to Inductor
+      const isSwitchOn = state.gateState;
+      ctxCircuit.strokeStyle = isSwitchOn ? '#38bdf8' : (state.isDCM ? '#64748b' : '#fbbf24');
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(xSwitch + 20, topY);
+      ctxCircuit.lineTo(xNodeSw, topY);
+      ctxCircuit.lineTo(xNodeSw, midY - 20); // down to freewheel diode
+      ctxCircuit.moveTo(xNodeSw, topY);
+      ctxCircuit.lineTo(xInductor - 40, topY);
+      ctxCircuit.stroke();
+
+      // Inductor Output to Cap and Load
+      ctxCircuit.strokeStyle = '#f43f5e'; // Pink/Red Vout
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(xInductor + 40, topY);
+      ctxCircuit.lineTo(xLoad, topY);
+      ctxCircuit.stroke();
+
+      // Bottom Ground Rail
+      ctxCircuit.strokeStyle = '#475569';
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(xVin, botY);
+      ctxCircuit.lineTo(xLoad, botY);
+      ctxCircuit.stroke();
+
+      // Vertical Ground branches
+      // Vin Ground
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(xVin, topY);
+      ctxCircuit.lineTo(xVin, midY - 20);
+      ctxCircuit.moveTo(xVin, midY + 20);
+      ctxCircuit.lineTo(xVin, botY);
+      // Diode Ground
+      ctxCircuit.moveTo(xNodeSw, midY + 25);
+      ctxCircuit.lineTo(xNodeSw, botY);
+      // Cap Ground
+      ctxCircuit.moveTo(xCap, topY);
+      ctxCircuit.lineTo(xCap, midY - 18);
+      ctxCircuit.moveTo(xCap, midY + 18);
+      ctxCircuit.lineTo(xCap, botY);
+      // Load Ground
+      ctxCircuit.moveTo(xLoad, topY);
+      ctxCircuit.lineTo(xLoad, midY - 25);
+      ctxCircuit.moveTo(xLoad, midY + 25);
+      ctxCircuit.lineTo(xLoad, botY);
+      ctxCircuit.stroke();
+
+      // 1. Draw DC Voltage Source (Vin)
+      drawDcSource(xVin, midY, state.Vin.toFixed(1) + 'V');
+
+      // 2. Draw High-Side MOSFET Switch
+      drawMosfetSwitch(xSwitch, topY, isSwitchOn);
+
+      // 3. Draw Freewheeling Diode or Synchronous MOSFET
+      if (state.isSync) {
+        drawSyncMosfet(xNodeSw, midY, !isSwitchOn && !state.isDCM);
+      } else {
+        drawFreewheelDiode(xNodeSw, midY, !isSwitchOn && !state.isDCM);
+      }
+
+      // 4. Draw Inductor L
+      drawInductor(xInductor, topY, (state.L * 1e6).toFixed(0) + 'µH');
+
+      // 5. Draw Output Capacitor C
+      drawCapacitor(xCap, midY, (state.C * 1e6).toFixed(0) + 'µF');
+
+      // 6. Draw Load Resistor R
+      drawLoadResistor(xLoad, midY, state.Rload.toFixed(1) + 'Ω');
+
+      // Draw Ground symbols
+      drawGroundSymbol(xVin, botY);
+      drawGroundSymbol(xNodeSw, botY);
+      drawGroundSymbol(xCap, botY);
+      drawGroundSymbol(xLoad, botY);
+
+      // 7. Render dynamic flowing current particles
+      renderCurrentParticles(xVin, xSwitch, xNodeSw, xInductor, xCap, xLoad, topY, botY, midY, isSwitchOn);
+
+      // 8. Node Voltage Badges
+      drawNodeBadge(xVin, topY - 14, `Vin: ${state.Vin.toFixed(1)}V`, '#38bdf8');
+      drawNodeBadge(xNodeSw, topY - 14, `Vsw: ${state.vSw.toFixed(1)}V`, '#fbbf24');
+      drawNodeBadge((xInductor + xCap) / 2, topY - 14, `IL: ${state.iL.toFixed(2)}A`, '#34d399');
+      drawNodeBadge(xLoad, topY - 14, `Vout: ${state.vOut.toFixed(2)}V`, '#f43f5e');
+    }
+
+    // Component Helper: DC Voltage Source
+    function drawDcSource(x, y, label) {
+      ctxCircuit.fillStyle = '#0f172a';
+      ctxCircuit.strokeStyle = '#38bdf8';
+      ctxCircuit.beginPath();
+      ctxCircuit.arc(x, y, 20, 0, Math.PI * 2);
+      ctxCircuit.fill();
+      ctxCircuit.stroke();
+
+      ctxCircuit.fillStyle = '#38bdf8';
+      ctxCircuit.font = 'bold 12px JetBrains Mono';
+      ctxCircuit.textAlign = 'center';
+      ctxCircuit.fillText('+', x, y - 6);
+      ctxCircuit.fillText('-', x, y + 14);
+
+      ctxCircuit.fillStyle = '#94a3b8';
+      ctxCircuit.font = '11px JetBrains Mono';
+      ctxCircuit.fillText(label, x - 28, y + 4);
+    }
+
+    // Component Helper: MOSFET Switch
+    function drawMosfetSwitch(x, y, isOn) {
+      ctxCircuit.save();
+      // Outer box / boundary
+      ctxCircuit.fillStyle = isOn ? 'rgba(56, 189, 248, 0.15)' : 'rgba(30, 41, 59, 0.4)';
+      ctxCircuit.strokeStyle = isOn ? '#38bdf8' : '#64748b';
+      ctxCircuit.lineWidth = 1.5;
+      ctxCircuit.beginPath();
+      ctxCircuit.roundRect(x - 22, y - 22, 44, 44, 6);
+      ctxCircuit.fill();
+      ctxCircuit.stroke();
+
+      // Switch Contact arm
+      ctxCircuit.strokeStyle = isOn ? '#38bdf8' : '#94a3b8';
+      ctxCircuit.lineWidth = 3;
+      ctxCircuit.beginPath();
+      ctxCircuit.arc(x - 14, y, 3, 0, Math.PI * 2);
+      ctxCircuit.arc(x + 14, y, 3, 0, Math.PI * 2);
+      ctxCircuit.fillStyle = '#38bdf8';
+      ctxCircuit.fill();
+
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(x - 14, y);
+      if (isOn) {
+        ctxCircuit.lineTo(x + 14, y); // Closed
+      } else {
+        ctxCircuit.lineTo(x + 8, y - 14); // Open
+      }
+      ctxCircuit.stroke();
+
+      // Gate Label & Indicator
+      ctxCircuit.fillStyle = isOn ? '#34d399' : '#64748b';
+      ctxCircuit.font = 'bold 10px JetBrains Mono';
+      ctxCircuit.textAlign = 'center';
+      ctxCircuit.fillText(isOn ? 'ON' : 'OFF', x, y + 16);
+      ctxCircuit.fillStyle = '#cbd5e1';
+      ctxCircuit.fillText('MOSFET', x, y - 26);
+      ctxCircuit.restore();
+    }
+
+    // Component Helper: Diode
+    function drawFreewheelDiode(x, y, isForward) {
+      ctxCircuit.save();
+      const size = 16;
+      ctxCircuit.fillStyle = isForward ? 'rgba(52, 211, 153, 0.2)' : 'rgba(30, 41, 59, 0.4)';
+      ctxCircuit.strokeStyle = isForward ? '#34d399' : '#64748b';
+      ctxCircuit.lineWidth = 2;
+
+      // Diode Triangle pointing UP (Cathode at top Vsw, Anode at GND)
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(x - size, y + size);
+      ctxCircuit.lineTo(x + size, y + size);
+      ctxCircuit.lineTo(x, y - size);
+      ctxCircuit.closePath();
+      ctxCircuit.fill();
+      ctxCircuit.stroke();
+
+      // Cathode horizontal bar
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(x - size, y - size);
+      ctxCircuit.lineTo(x + size, y - size);
+      ctxCircuit.stroke();
+
+      // Text
+      ctxCircuit.fillStyle = isForward ? '#34d399' : '#94a3b8';
+      ctxCircuit.font = '10px JetBrains Mono';
+      ctxCircuit.textAlign = 'left';
+      ctxCircuit.fillText(isForward ? '續流中' : '截止 (OFF)', x + 22, y + 4);
+      ctxCircuit.restore();
+    }
+
+    // Component Helper: Synchronous MOSFET
+    function drawSyncMosfet(x, y, isOn) {
+      ctxCircuit.save();
+      ctxCircuit.fillStyle = isOn ? 'rgba(52, 211, 153, 0.15)' : 'rgba(30, 41, 59, 0.4)';
+      ctxCircuit.strokeStyle = isOn ? '#34d399' : '#64748b';
+      ctxCircuit.lineWidth = 1.5;
+      ctxCircuit.beginPath();
+      ctxCircuit.roundRect(x - 20, y - 20, 40, 40, 6);
+      ctxCircuit.fill();
+      ctxCircuit.stroke();
+
+      ctxCircuit.fillStyle = isOn ? '#34d399' : '#64748b';
+      ctxCircuit.font = 'bold 9px JetBrains Mono';
+      ctxCircuit.textAlign = 'center';
+      ctxCircuit.fillText('SYNC FET', x, y - 5);
+      ctxCircuit.fillText(isOn ? 'ON' : 'OFF', x, y + 10);
+      ctxCircuit.restore();
+    }
+
+    // Component Helper: Inductor Coil
+    function drawInductor(x, y, label) {
+      ctxCircuit.save();
+      ctxCircuit.strokeStyle = '#fbbf24';
+      ctxCircuit.lineWidth = 3;
+      ctxCircuit.beginPath();
+      const numLoops = 4;
+      const radius = 10;
+      const startX = x - (numLoops * radius);
+      
+      for (let i = 0; i < numLoops; i++) {
+        const cx = startX + radius + i * (radius * 2);
+        ctxCircuit.arc(cx, y, radius, Math.PI, 0, false);
+      }
+      ctxCircuit.stroke();
+
+      // Label & Flux Glow
+      ctxCircuit.fillStyle = '#fbbf24';
+      ctxCircuit.font = '11px JetBrains Mono';
+      ctxCircuit.textAlign = 'center';
+      ctxCircuit.fillText('L: ' + label, x, y + 24);
+      ctxCircuit.restore();
+    }
+
+    // Component Helper: Capacitor
+    function drawCapacitor(x, y, label) {
+      ctxCircuit.save();
+      ctxCircuit.strokeStyle = '#f43f5e';
+      ctxCircuit.lineWidth = 3;
+
+      // Top Plate
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(x - 16, y - 7);
+      ctxCircuit.lineTo(x + 16, y - 7);
+      ctxCircuit.stroke();
+
+      // Bottom Plate
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(x - 16, y + 7);
+      ctxCircuit.lineTo(x + 16, y + 7);
+      ctxCircuit.stroke();
+
+      ctxCircuit.fillStyle = '#f43f5e';
+      ctxCircuit.font = '11px JetBrains Mono';
+      ctxCircuit.textAlign = 'left';
+      ctxCircuit.fillText('C: ' + label, x + 22, y + 4);
+      ctxCircuit.restore();
+    }
+
+    // Component Helper: Load Resistor
+    function drawLoadResistor(x, y, label) {
+      ctxCircuit.save();
+      ctxCircuit.strokeStyle = '#60a5fa';
+      ctxCircuit.lineWidth = 2.5;
+
+      const zigzag = [
+        { x: 0, y: -20 },
+        { x: 8, y: -14 },
+        { x: -8, y: -7 },
+        { x: 8, y: 0 },
+        { x: -8, y: 7 },
+        { x: 8, y: 14 },
+        { x: 0, y: 20 }
+      ];
+
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(x, y + zigzag[0].y);
+      for (let i = 1; i < zigzag.length; i++) {
+        ctxCircuit.lineTo(x + zigzag[i].x, y + zigzag[i].y);
+      }
+      ctxCircuit.stroke();
+
+      ctxCircuit.fillStyle = '#60a5fa';
+      ctxCircuit.font = '11px JetBrains Mono';
+      ctxCircuit.textAlign = 'left';
+      ctxCircuit.fillText('R: ' + label, x + 16, y + 4);
+      ctxCircuit.restore();
+    }
+
+    function drawGroundSymbol(x, y) {
+      ctxCircuit.save();
+      ctxCircuit.strokeStyle = '#475569';
+      ctxCircuit.lineWidth = 2;
+      ctxCircuit.beginPath();
+      ctxCircuit.moveTo(x - 12, y);
+      ctxCircuit.lineTo(x + 12, y);
+      ctxCircuit.moveTo(x - 8, y + 5);
+      ctxCircuit.lineTo(x + 8, y + 5);
+      ctxCircuit.moveTo(x - 4, y + 10);
+      ctxCircuit.lineTo(x + 4, y + 10);
+      ctxCircuit.stroke();
+      ctxCircuit.restore();
+    }
+
+    function drawNodeBadge(x, y, text, color) {
+      ctxCircuit.save();
+      ctxCircuit.font = '10px JetBrains Mono';
+      const textWidth = ctxCircuit.measureText(text).width;
+      ctxCircuit.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctxCircuit.strokeStyle = color;
+      ctxCircuit.lineWidth = 1;
+      ctxCircuit.beginPath();
+      ctxCircuit.roundRect(x - textWidth / 2 - 6, y - 10, textWidth + 12, 18, 4);
+      ctxCircuit.fill();
+      ctxCircuit.stroke();
+
+      ctxCircuit.fillStyle = color;
+      ctxCircuit.textAlign = 'center';
+      ctxCircuit.fillText(text, x, y + 3);
+      ctxCircuit.restore();
+    }
+
+    // Current flow dynamic particles
+    function renderCurrentParticles(xVin, xSwitch, xSwNode, xL, xCap, xLoad, topY, botY, midY, isSwitchOn) {
+      if (state.isPaused || (state.isDCM && state.iL <= 0.001)) {
+        return; // No active inductor current in DCM
+      }
+
+      const particleSpeed = (Math.max(0.2, state.iL) / 3.0) * 0.008 * state.speedScale;
+      ctxCircuit.fillStyle = isSwitchOn ? '#38bdf8' : '#34d399';
+
+      particles.forEach(p => {
+        p.t = (p.t + particleSpeed) % 1.0;
+        let px = 0, py = 0;
+
+        if (isSwitchOn) {
+          // Loop 1: Vin -> Switch -> L -> Load/Cap -> GND -> Vin
+          if (p.t < 0.25) { // Top rail from Vin to L
+            const subT = p.t / 0.25;
+            px = xVin + subT * (xL - xVin);
+            py = topY;
+          } else if (p.t < 0.45) { // L to Load
+            const subT = (p.t - 0.25) / 0.20;
+            px = xL + subT * (xLoad - xL);
+            py = topY;
+          } else if (p.t < 0.65) { // Down through load
+            const subT = (p.t - 0.45) / 0.20;
+            px = xLoad;
+            py = topY + subT * (botY - topY);
+          } else if (p.t < 0.90) { // Bottom rail to Vin
+            const subT = (p.t - 0.65) / 0.25;
+            px = xLoad - subT * (xLoad - xVin);
+            py = botY;
+          } else { // Up through Vin source
+            const subT = (p.t - 0.90) / 0.10;
+            px = xVin;
+            py = botY - subT * (botY - topY);
+          }
+        } else {
+          // Loop 2: Freewheel GND -> Diode -> L -> Load -> GND
+          if (p.t < 0.20) { // Up through Diode
+            const subT = p.t / 0.20;
+            px = xSwNode;
+            py = botY - subT * (botY - topY);
+          } else if (p.t < 0.50) { // Top rail through L to Load
+            const subT = (p.t - 0.20) / 0.30;
+            px = xSwNode + subT * (xLoad - xSwNode);
+            py = topY;
+          } else if (p.t < 0.70) { // Down through Load
+            const subT = (p.t - 0.50) / 0.20;
+            px = xLoad;
+            py = topY + subT * (botY - topY);
+          } else { // Return ground rail from Load back to Diode ground
+            const subT = (p.t - 0.70) / 0.30;
+            px = xLoad - subT * (xLoad - xSwNode);
+            py = botY;
+          }
+        }
+
+        ctxCircuit.beginPath();
+        ctxCircuit.arc(px, py, 2.5, 0, Math.PI * 2);
+        ctxCircuit.fill();
+      });
+    }
+
+    // Oscilloscope Screen Renderer
+    function renderOscilloscope() {
+      const w = scopeCanvas.width;
+      const h = scopeCanvas.height;
+      ctxScope.clearRect(0, 0, w, h);
+
+      // Oscilloscope Division Grid
+      const numDivX = 10;
+      const numDivY = 8;
+      const dx = w / numDivX;
+      const dy = h / numDivY;
+
+      ctxScope.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctxScope.lineWidth = 1;
+
+      for (let i = 1; i < numDivX; i++) {
+        ctxScope.beginPath();
+        ctxScope.moveTo(i * dx, 0);
+        ctxScope.lineTo(i * dx, h);
+        ctxScope.stroke();
+      }
+      for (let j = 1; j < numDivY; j++) {
+        ctxScope.beginPath();
+        ctxScope.moveTo(0, j * dy);
+        ctxScope.lineTo(w, j * dy);
+        ctxScope.stroke();
+      }
+
+      // Center crosshair axis
+      ctxScope.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctxScope.beginPath();
+      ctxScope.moveTo(0, h / 2);
+      ctxScope.lineTo(w, h / 2);
+      ctxScope.moveTo(w / 2, 0);
+      ctxScope.lineTo(w / 2, h);
+      ctxScope.stroke();
+
+      // Trigger line indicator at 0V
+      const zeroY = h * 0.85;
+
+      // Draw Waveforms
+      // Scale mappings:
+      // Voltage scale: 0 to 40V maps to (zeroY) down to (h * 0.1)
+      const vScale = (zeroY - h * 0.1) / Math.max(state.Vin * 1.3, 10);
+      // Current scale: 0 to 8A
+      const iScale = (zeroY - h * 0.15) / Math.max(state.peakIL * 1.5, 2.0);
+
+      // Channel 1: V_gate (Pulse)
+      if (chGate.checked) {
+        ctxScope.strokeStyle = '#34d399';
+        ctxScope.lineWidth = 2;
+        ctxScope.beginPath();
+        for (let i = 0; i < SCOPE_POINTS; i++) {
+          const x = (i / (SCOPE_POINTS - 1)) * w;
+          const val = scopeData.gate[i];
+          const y = zeroY - (val * 12) * (vScale * 0.25); // 12V gate drive
+          if (i === 0) ctxScope.moveTo(x, y);
+          else ctxScope.lineTo(x, y);
+        }
+        ctxScope.stroke();
+      }
+
+      // Channel 2: V_sw (Switch Node)
+      if (chVsw.checked) {
+        ctxScope.strokeStyle = '#facc15';
+        ctxScope.lineWidth = 2;
+        ctxScope.beginPath();
+        for (let i = 0; i < SCOPE_POINTS; i++) {
+          const x = (i / (SCOPE_POINTS - 1)) * w;
+          const val = scopeData.vsw[i];
+          const y = zeroY - val * vScale;
+          if (i === 0) ctxScope.moveTo(x, y);
+          else ctxScope.lineTo(x, y);
+        }
+        ctxScope.stroke();
+      }
+
+      // Channel 3: I_L (Inductor Current)
+      if (chIL.checked) {
+        ctxScope.strokeStyle = '#38bdf8';
+        ctxScope.lineWidth = 2.5;
+        ctxScope.beginPath();
+        for (let i = 0; i < SCOPE_POINTS; i++) {
+          const x = (i / (SCOPE_POINTS - 1)) * w;
+          const val = scopeData.il[i];
+          const y = zeroY - val * iScale;
+          if (i === 0) ctxScope.moveTo(x, y);
+          else ctxScope.lineTo(x, y);
+        }
+        ctxScope.stroke();
+      }
+
+      // Channel 4: V_out
+      if (chVout.checked) {
+        ctxScope.strokeStyle = '#f43f5e';
+        ctxScope.lineWidth = 2;
+        ctxScope.beginPath();
+        const isAcCoupled = chkAcCoupling.checked;
+        const avgVo = state.vOut;
+
+        for (let i = 0; i < SCOPE_POINTS; i++) {
+          const x = (i / (SCOPE_POINTS - 1)) * w;
+          let y = 0;
+          if (isAcCoupled) {
+            // AC Zoom: magnify ripple 100x around center line
+            const acVal = (scopeData.vout[i] - avgVo) * 200;
+            y = (h / 2) - acVal;
+          } else {
+            y = zeroY - scopeData.vout[i] * vScale;
+          }
+          if (i === 0) ctxScope.moveTo(x, y);
+          else ctxScope.lineTo(x, y);
+        }
+        ctxScope.stroke();
+      }
+
+      // Zero reference ground tick
+      ctxScope.fillStyle = '#64748b';
+      ctxScope.font = '10px JetBrains Mono';
+      ctxScope.fillText('GND 0V', 4, zeroY + 12);
+    }
+
+    // Main Physics & Render Animation Loop
+    let lastTimestamp = performance.now();
+    let accumulatedTime = 0;
+
+    function mainLoop(now) {
+      const dtReal = (now - lastTimestamp) / 1000;
+      lastTimestamp = now;
+
+      if (!state.isPaused) {
+        // Run high frequency numerical integration
+        // Each frame advances multiple PWM cycles to maintain mathematical stability
+        const Tsw = 1.0 / state.fsw;
+        const displayCycles = state.timebaseMult * 2; // cycles across screen
+        const totalSimWindow = displayCycles * Tsw;
+        const dtSub = totalSimWindow / SCOPE_POINTS;
+
+        // Populate scope buffer synchronized with PWM phase
+        for (let pt = 0; pt < SCOPE_POINTS; pt++) {
+          simulateStep(dtSub);
+
+          scopeData.t[pt] = state.simTime;
+          scopeData.gate[pt] = state.gateState ? 1.0 : 0.0;
+          scopeData.vsw[pt] = state.vSw;
+          scopeData.il[pt] = state.iL;
+          scopeData.vout[pt] = state.vOut;
+        }
+
+        updateMetrics();
+      }
+
+      // Render Visualizations
+      renderCircuit();
+      renderOscilloscope();
+
+      requestAnimationFrame(mainLoop);
+    }
+
+    // Window Resize Handler for High-DPI Canvases
+    function resizeCanvases() {
+      const dpr = window.devicePixelRatio || 1;
+      
+      const rectCircuit = circuitCanvas.parentElement.getBoundingClientRect();
+      circuitCanvas.width = rectCircuit.width * dpr;
+      circuitCanvas.height = rectCircuit.height * dpr;
+      ctxCircuit.scale(dpr, dpr);
+
+      const rectScope = scopeCanvas.parentElement.getBoundingClientRect();
+      scopeCanvas.width = rectScope.width * dpr;
+      scopeCanvas.height = rectScope.height * dpr;
+      ctxScope.scale(dpr, dpr);
+    }
+
+    window.addEventListener('resize', resizeCanvases);
+
+    // Event Listeners for Parameter Sliders
+    sliderVin.addEventListener('input', (e) => {
+      state.Vin = parseFloat(e.target.value);
+      document.getElementById('valVin').textContent = state.Vin.toFixed(1) + ' V';
+    });
+
+    sliderTarget.addEventListener('input', (e) => {
+      if (state.isClosedLoop) {
+        state.Vtarget = parseFloat(e.target.value);
+        valTargetControl.textContent = state.Vtarget.toFixed(1) + ' V';
+      } else {
+        state.duty = parseFloat(e.target.value) / 100.0;
+        valTargetControl.textContent = (state.duty * 100).toFixed(1) + ' %';
+      }
+    });
+
+    sliderFsw.addEventListener('input', (e) => {
+      state.fsw = parseFloat(e.target.value) * 1000;
+      document.getElementById('valFsw').textContent = e.target.value + ' kHz';
+    });
+
+    sliderL.addEventListener('input', (e) => {
+      state.L = parseFloat(e.target.value) * 1e-6;
+      document.getElementById('valL').textContent = e.target.value + ' µH';
+    });
+
+    sliderC.addEventListener('input', (e) => {
+      state.C = parseFloat(e.target.value) * 1e-6;
+      document.getElementById('valC').textContent = e.target.value + ' µF';
+    });
+
+    sliderRload.addEventListener('input', (e) => {
+      state.Rload = parseFloat(e.target.value);
+      const estI = state.vOut / state.Rload;
+      document.getElementById('valRload').textContent = `${state.Rload.toFixed(1)} Ω (${estI.toFixed(2)} A)`;
+    });
+
+    // Control Mode Switch (Open Loop manual duty vs Closed Loop PID)
+    btnToggleControlMode.addEventListener('click', () => {
+      state.isClosedLoop = !state.isClosedLoop;
+      if (state.isClosedLoop) {
+        btnToggleControlMode.textContent = '閉環 PID 穩壓';
+        btnToggleControlMode.className = 'px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 font-mono font-medium border border-slate-700 transition';
+        labelTargetControl.textContent = '目標輸出電壓 (V_target):';
+        sliderTarget.min = "1";
+        sliderTarget.max = (state.Vin * 0.95).toFixed(1);
+        sliderTarget.step = "0.1";
+        sliderTarget.value = state.Vtarget;
+        valTargetControl.textContent = state.Vtarget.toFixed(1) + ' V';
+      } else {
+        btnToggleControlMode.textContent = '開環手動占空比 (Duty)';
+        btnToggleControlMode.className = 'px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-400 font-mono font-medium border border-slate-700 transition';
+        labelTargetControl.textContent = '手動 PWM 占空比 (Duty D):';
+        sliderTarget.min = "5";
+        sliderTarget.max = "95";
+        sliderTarget.step = "1";
+        sliderTarget.value = (state.duty * 100).toFixed(0);
+        valTargetControl.textContent = (state.duty * 100).toFixed(1) + ' %';
+      }
+    });
+
+    // Synchronous Rectifier toggle
+    chkSyncRectifier.addEventListener('change', (e) => {
+      state.isSync = e.target.checked;
+      showToast(state.isSync ? '已切換為同步整流 (MOSFET 續流)' : '已切換為非同步肖特基二極體續流');
+    });
+
+    // Pause / Resume
+    btnPause.addEventListener('click', () => {
+      state.isPaused = !state.isPaused;
+      if (state.isPaused) {
+        pauseText.textContent = '繼續運行';
+        btnPause.className = 'px-3 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-1 transition';
+        pauseIcon.innerHTML = `<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />`;
+      } else {
+        pauseText.textContent = '暫停';
+        btnPause.className = 'px-3 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white font-medium flex items-center gap-1 transition';
+        pauseIcon.innerHTML = `<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>`;
+      }
+    });
+
+    // Timebase and Speed
+    timebaseSelect.addEventListener('change', (e) => {
+      state.timebaseMult = parseInt(e.target.value);
+    });
+
+    simSpeedSelect.addEventListener('change', (e) => {
+      state.speedScale = parseFloat(e.target.value);
+    });
+
+    // Presets
+    presetSelect.addEventListener('change', (e) => {
+      const mode = e.target.value;
+      if (mode === 'std12to5') {
+        state.Vin = 12.0;
+        state.Vtarget = 5.0;
+        state.fsw = 100000;
+        state.L = 47e-6;
+        state.C = 100e-6;
+        state.Rload = 2.5;
+        state.isSync = false;
+        sliderVin.value = 12;
+        sliderTarget.value = 5;
+        sliderFsw.value = 100;
+        sliderL.value = 47;
+        sliderC.value = 100;
+        sliderRload.value = 2.5;
+        chkSyncRectifier.checked = false;
+        showToast('載入標準配置: 12V 轉 5V / 2A CCM');
+      } else if (mode === 'lightDCM') {
+        state.Vin = 12.0;
+        state.Vtarget = 5.0;
+        state.fsw = 80000;
+        state.L = 15e-6;
+        state.C = 47e-6;
+        state.Rload = 35.0; // Very light load
+        state.isSync = false;
+        sliderVin.value = 12;
+        sliderTarget.value = 5;
+        sliderFsw.value = 80;
+        sliderL.value = 15;
+        sliderC.value = 47;
+        sliderRload.value = 35;
+        chkSyncRectifier.checked = false;
+        showToast('載入輕載配置: 電感電流歸零進入 DCM 模式');
+      } else if (mode === 'highFreq') {
+        state.Vin = 12.0;
+        state.Vtarget = 3.3;
+        state.fsw = 300000;
+        state.L = 10e-6;
+        state.C = 220e-6;
+        state.Rload = 1.5;
+        state.isSync = true;
+        sliderVin.value = 12;
+        sliderTarget.value = 3.3;
+        sliderFsw.value = 300;
+        sliderL.value = 10;
+        sliderC.value = 220;
+        sliderRload.value = 1.5;
+        chkSyncRectifier.checked = true;
+        showToast('載入高頻同步整流: 300kHz 低漣波微型化');
+      } else if (mode === 'heavy24to12') {
+        state.Vin = 24.0;
+        state.Vtarget = 12.0;
+        state.fsw = 120000;
+        state.L = 68e-6;
+        state.C = 330e-6;
+        state.Rload = 2.4;
+        state.isSync = true;
+        sliderVin.value = 24;
+        sliderTarget.value = 12;
+        sliderFsw.value = 120;
+        sliderL.value = 68;
+        sliderC.value = 330;
+        sliderRload.value = 2.4;
+        chkSyncRectifier.checked = true;
+        showToast('載入大功率工業配置: 24V 轉 12V / 5A');
+      }
+
+      // Update Slider label texts
+      document.getElementById('valVin').textContent = state.Vin.toFixed(1) + ' V';
+      valTargetControl.textContent = state.Vtarget.toFixed(1) + ' V';
+      document.getElementById('valFsw').textContent = (state.fsw / 1000).toFixed(0) + ' kHz';
+      document.getElementById('valL').textContent = (state.L * 1e6).toFixed(0) + ' µH';
+      document.getElementById('valC').textContent = (state.C * 1e6).toFixed(0) + ' µF';
+      document.getElementById('valRload').textContent = `${state.Rload.toFixed(1)} Ω (${(state.vOut / state.Rload).toFixed(2)} A)`;
+    });
+
+    // Step Load Transient Test
+    btnStepLoad.addEventListener('click', () => {
+      const origR = state.Rload;
+      state.Rload = Math.max(0.8, origR * 0.4); // sudden 2.5x load spike
+      sliderRload.value = state.Rload;
+      document.getElementById('valRload').textContent = `${state.Rload.toFixed(1)} Ω (${(state.vOut / state.Rload).toFixed(2)} A)`;
+      showToast('⚡ 負載突增 (階躍暫態響應測試)');
+
+      setTimeout(() => {
+        state.Rload = origR;
+        sliderRload.value = origR;
+        document.getElementById('valRload').textContent = `${state.Rload.toFixed(1)} Ω (${(state.vOut / state.Rload).toFixed(2)} A)`;
+        showToast('⚡ 負載恢復原值');
+      }, 1500);
+    });
+
+    // Oscilloscope Interactive Cursor / Inspector
+    scopeCanvas.addEventListener('mousemove', (e) => {
+      const rect = scopeCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const ratio = Math.max(0, Math.min(1, x / rect.width));
+      const idx = Math.floor(ratio * (SCOPE_POINTS - 1));
+
+      const vswAt = scopeData.vsw[idx].toFixed(2);
+      const ilAt = scopeData.il[idx].toFixed(2);
+      const voutAt = scopeData.vout[idx].toFixed(2);
+      scopeCursorInfo.textContent = `游標: V_sw=${vswAt}V | I_L=${ilAt}A | V_out=${voutAt}V`;
+    });
+
+    scopeCanvas.addEventListener('mouseleave', () => {
+      scopeCursorInfo.textContent = '游標檢測: 移動滑鼠至示波器';
+    });
+
+    // Theory Panel Toggle
+    btnToggleTheory.addEventListener('click', () => {
+      theoryContent.classList.toggle('hidden');
+      btnToggleTheory.textContent = theoryContent.classList.contains('hidden') ? '展開公式詳解' : '收起公式詳解';
+    });
+
+    function showToast(msg) {
+      toastMsg.textContent = msg;
+      toast.classList.remove('opacity-0', 'translate-y-2');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-2');
+      }, 2500);
+    }
+
+    // Initialize & Kickoff Animation
+    window.onload = function() {
+      resizeCanvases();
+      requestAnimationFrame(mainLoop);
+    };
+  </script>
+</body>
+</html>
