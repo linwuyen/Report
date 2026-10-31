@@ -1,0 +1,24 @@
+# Keep credentials and company diagnostic data local.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.secret
+secrets/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+reports/*
+!reports/.gitkeep
+raw/
+data/
+*.log
+*.out
+*.bin
+*.hex
+*.csv
+*.jsonl
+!samples/demo.jsonl

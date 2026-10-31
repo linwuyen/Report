@@ -1,0 +1,6 @@
+{"session_id":"S001-SIMULATED","ts_us":1000,"timebase":"CPU1_LOCAL","source":"CPU1","event":"snapshot","firmware_sha":"UNKNOWN","fields":{"system_state":"IDLE","command_seq":4,"applied_seq":4,"read_ok_count":2171}}
+{"session_id":"S001-SIMULATED","ts_us":2100,"timebase":"CPU1_LOCAL","source":"CPU1","event":"snapshot","firmware_sha":"UNKNOWN","fields":{"system_state":"IDLE","command_seq":8,"applied_seq":4,"read_ok_count":2172}}
+{"session_id":"S001-SIMULATED","ts_us":2200,"timebase":"CPU1_LOCAL","source":"CPU1","event":"on_edge_terminal","fields":{"terminal_reason":"NACK_EXHAUSTED","retry_count":1}}
+{"session_id":"S001-SIMULATED","ts_us":3000,"timebase":"CPU1_LOCAL","source":"CPU1","event":"system_state","fields":{"state":"FAULT","fault_state":"RECOVERY_WAIT"}}
+{"session_id":"S001-SIMULATED","ts_us":120000,"timebase":"LA_CAPTURE_01","source":"LA","event":"out_on_high","fields":{}}
+{"session_id":"S001-SIMULATED","ts_us":162500,"timebase":"LA_CAPTURE_01","source":"LA","event":"dds_wave_start","fields":{}}
