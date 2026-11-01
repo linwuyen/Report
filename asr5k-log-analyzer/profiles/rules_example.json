@@ -1,0 +1,8 @@
+{
+  "on_edge": {"target_us": 40000, "tolerance_us": 1000},
+  "sequence_mismatch_warn_samples": 1,
+  "intervals": [
+    {"name": "SPIB_SERVICE", "start_event": "spib_service_start", "end_event": "spib_service_end"}
+  ],
+  "allowed_transitions": {}
+}

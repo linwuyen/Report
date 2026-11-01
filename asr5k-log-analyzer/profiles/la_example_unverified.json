@@ -1,0 +1,13 @@
+{
+  "time_column": "Time [s]",
+  "time_unit": "s",
+  "session_id": "SIMULATED-LA-01",
+  "capture_id": "LA_SIM_CAPTURE_01",
+  "timebase": "LA_SIM_CLOCK",
+  "source": "LA",
+  "signal_mapping_verified": false,
+  "signals": {
+    "out_on_high": {"column": "OUT_ON", "edge": "rising"},
+    "dds_wave_start": {"column": "DDS_WAVE", "edge": "rising"}
+  }
+}

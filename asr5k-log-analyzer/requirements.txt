@@ -1,1 +1,3 @@
+# Offline core uses only Python standard library.
+# API analysis is optional. Install this only if you want --ai.
 openai>=1.68.0

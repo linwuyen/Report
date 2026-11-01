@@ -1,0 +1,12 @@
+{
+  "variable_column": "Expression",
+  "value_column": "Value",
+  "session_id": "SIMULATED-CCS-01",
+  "source": "CPU1",
+  "field_map": {
+    "u16OutputCommandSequence": "command_seq",
+    "u16AppliedOutputCommandSequence": "applied_seq",
+    "eSystemState": "system_state"
+  },
+  "verified_enum_map": {}
+}

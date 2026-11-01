@@ -1,0 +1,2 @@
+{"session_id":"S001-SIMULATED","ts_us":120000,"timebase":"LA_CAPTURE_01","source":"LA","event":"out_on_high","fields":{}}
+{"session_id":"S001-SIMULATED","ts_us":160000,"timebase":"LA_CAPTURE_01","source":"LA","event":"dds_wave_start","fields":{}}

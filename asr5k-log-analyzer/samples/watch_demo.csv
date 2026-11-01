@@ -1,0 +1,5 @@
+Expression,Value
+u16OutputCommandSequence,8
+u16AppliedOutputCommandSequence,4
+eSystemState,4
+unmappedVariable,42

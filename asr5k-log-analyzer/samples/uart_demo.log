@@ -1,0 +1,4 @@
+[1000] CPU1 snapshot command_seq=4 applied_seq=4 system_state=IDLE
+[1500] CPU1 snapshot command_seq=8 applied_seq=4 system_state=IDLE
+[1550] CPU1 on_edge_terminal terminal_reason=NACK_EXHAUSTED retry_count=1
+[2000] CPU1 system_state state=FAULT

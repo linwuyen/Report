@@ -1,4 +1,4 @@
-# Keep credentials and company diagnostic data local.
+# Secrets and user-generated hardware data must NOT be committed to the public repo.
 .env
 .env.*
 !.env.example
@@ -6,19 +6,24 @@
 *.pem
 *.secret
 secrets/
-__pycache__/
-*.pyc
 .venv/
 venv/
+__pycache__/
+*.py[cod]
 .pytest_cache/
+.mypy_cache/
 reports/*
 !reports/.gitkeep
 raw/
 data/
-*.log
 *.out
 *.bin
 *.hex
+*.log
 *.csv
 *.jsonl
 !samples/demo.jsonl
+!samples/la_demo.csv
+!samples/watch_demo.csv
+!samples/uart_demo.log
+!samples/demo_pass.jsonl

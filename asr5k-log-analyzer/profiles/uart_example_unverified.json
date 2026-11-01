@@ -1,0 +1,10 @@
+{
+  "pattern": "^\\[(?P<timestamp>\\d+)\\] (?P<source>CPU1|CPU2|M0) (?P<event>[a-z_]+) (?P<kv>.*)$",
+  "time_unit": "us",
+  "session_id": "SIMULATED-UART-01",
+  "timebase_by_source": {
+    "CPU1": "CPU1_LOCAL_UNVERIFIED",
+    "CPU2": "CPU2_LOCAL_UNVERIFIED",
+    "M0": "M0_LOCAL_UNVERIFIED"
+  }
+}
